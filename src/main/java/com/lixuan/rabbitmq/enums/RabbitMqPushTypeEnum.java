@@ -9,6 +9,7 @@ package com.lixuan.rabbitmq.enums;
 public enum RabbitMqPushTypeEnum {
 
     SMS_TO_USER("push.sms.toUser"),
+    LOGIN_INTEGRAL_USER("login.integral.user"),
 
     ;
 

@@ -27,7 +27,7 @@ public enum RabbitMqQueuesEnum {
      */
     LOGIN_INTEGRAL_USER(
             RabbitMqQueuesModelEnum.USER,
-            RabbitMqPushTypeEnum.SMS_TO_USER,
+            RabbitMqPushTypeEnum.LOGIN_INTEGRAL_USER,
             "20221121",
             RabbitMqExchangesEnum.LOGIN, null
     );
