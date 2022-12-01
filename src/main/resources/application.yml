@@ -1,0 +1,36 @@
+server:
+  port: 8001
+  tomcat:
+    uri-encoding: UTF-8
+    max-keep-alive-requests: 100
+    keep-alive-timeout: 65
+  servlet:
+    context-path: /api/rabbit/v1
+spring:
+  profiles:
+    active: local
+  application:
+    name: RabbitMQApplication
+  servlet:
+    multipart:
+      max-file-size: 5MB
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+
+logging:
+  level:
+    root: info
+  config: classpath:logback.xml
+
+mybatis-plus:
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  mapper-locations: classpath*:mapper/*.xml
