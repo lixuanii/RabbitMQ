@@ -3,7 +3,6 @@ package com.lixuan.rabbitmq.config;
 import cn.hutool.extra.spring.SpringUtil;
 import com.lixuan.rabbitmq.enums.RabbitMqExchangesEnum;
 import com.lixuan.rabbitmq.enums.RabbitMqQueuesEnum;
-import org.jetbrains.annotations.NotNull;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.DirectExchange;
@@ -13,11 +12,8 @@ import org.springframework.amqp.core.FanoutExchange;
 import org.springframework.amqp.core.HeadersExchange;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.TopicExchange;
-import org.springframework.beans.BeansException;
-import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
-import org.springframework.beans.factory.support.BeanDefinitionRegistry;
-import org.springframework.beans.factory.support.BeanDefinitionRegistryPostProcessor;
 import org.springframework.context.annotation.Bean;
+import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
 import java.util.Objects;
@@ -26,7 +22,8 @@ import java.util.Objects;
  * @author lixuan
  * @date 2022-11-22 10:40
  */
-public class RabbitMqConfig implements BeanDefinitionRegistryPostProcessor {
+@Component
+public class RabbitMqConfig {
 
     /**
      * 动态声明队列
@@ -95,23 +92,4 @@ public class RabbitMqConfig implements BeanDefinitionRegistryPostProcessor {
         return isWhereAll ? configurer.whereAll(headers) : configurer.whereAny(headers);
     }
 
-
-    /**
-     * 初始化过程中 先执行
-     *
-     * @param registry bean定义注册表
-     */
-    @Override
-    public void postProcessBeanDefinitionRegistry(@NotNull BeanDefinitionRegistry registry) throws BeansException {
-
-    }
-
-    /**
-     * 初始化过程中 后执行
-     *
-     * @param beanFactory 可配置Bean工厂
-     */
-    @Override
-    public void postProcessBeanFactory(@NotNull ConfigurableListableBeanFactory beanFactory) throws BeansException {
-    }
 }

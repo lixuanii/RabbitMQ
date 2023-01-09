@@ -25,6 +25,12 @@ public class MqMsgLog extends BaseEntity<MqMsgLog> {
     private static final long serialVersionUID = 1L;
 
     /**
+     * 消息id
+     */
+    @TableField("msg_id")
+    private String msgId;
+
+    /**
      * 消息体
      */
     @TableField("body")

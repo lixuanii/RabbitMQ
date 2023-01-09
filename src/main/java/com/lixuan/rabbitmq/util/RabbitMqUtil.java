@@ -1,22 +1,16 @@
 package com.lixuan.rabbitmq.util;
 
-import cn.hutool.extra.spring.SpringUtil;
-import com.lixuan.rabbitmq.enums.RabbitMqExchangesEnum;
-import com.lixuan.rabbitmq.enums.RabbitMqQueuesEnum;
+import com.lixuan.rabbitmq.dto.MsgDTO;
+import com.lixuan.rabbitmq.entity.MqMsgLog;
+import com.lixuan.rabbitmq.enums.MsgLogStatusEnum;
+import com.lixuan.rabbitmq.enums.RabbitMqExchangesTypeEnum;
 import com.lixuan.rabbitmq.service.MqMsgLogService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.amqp.core.BindingBuilder;
-import org.springframework.amqp.core.DirectExchange;
-import org.springframework.amqp.core.Exchange;
-import org.springframework.amqp.core.FanoutExchange;
-import org.springframework.amqp.core.Queue;
-import org.springframework.amqp.core.TopicExchange;
+import org.springframework.amqp.core.Message;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-
-import javax.annotation.PostConstruct;
-import java.util.Arrays;
-import java.util.Objects;
 
 
 /**
@@ -30,63 +24,94 @@ import java.util.Objects;
 public class RabbitMqUtil {
 
     @Autowired
-    private MqMsgLogService mqMsgLogService;
+    private MqMsgLogService msgLogService;
 
-
-    /**
-     * 队列声明
-     *
-     * @param queuesEnum 队列枚举
-     * @author lixuan
-     * @date 2022/11/21 16:35
-     **/
-    public static Queue queueDeclare(RabbitMqQueuesEnum queuesEnum) {
-        if (null == queuesEnum) {
-            log.error("RabbitMqUtil.queueDeclare.error,mqQueuesEnum isNull");
-            return null;
-        }
-        String queueName = queuesEnum.buildQueueName();
-        return new Queue(queueName);
-    }
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
 
     /**
-     * 声明交换机
+     * 消息推送
      *
-     * @param exchangesEnum 交换机类型
-     * @return Exchange
+     * @param dto                消息dto
+     * @param pushToExchangeFlag 是否推送到交换机标识
      * @author lixuan
-     * @date 2022/11/22 9:32
+     * @date 2022/12/2 10:26
      **/
-    public static Exchange exchangeDeclare(RabbitMqExchangesEnum exchangesEnum) {
-        if (null == exchangesEnum) {
-            log.error("RabbitMqUtil.exchangeDeclare.error,mqExchangesEnum isNull");
-            return null;
+    public void pushMsg(MsgDTO dto, boolean pushToExchangeFlag) {
+        boolean flag = dto == null || dto.getMessage() == null || dto.getMessage().getMsgId() == null || dto.getMessage().getMsg() == null || dto.getUserId() == null || dto.getQueuesEnum() == null || dto.getQueuesEnum().getExchanges() == null || dto.getQueuesEnum().getPushTypeEnum() == null;
+        if (flag) {
+            log.error("RabbitMqUtil.pushMsg.MsgDTO error,MsgDTO:{}", dto);
+            return;
         }
-        return switch (exchangesEnum.getRabbitMqExchangesTypeEnum()) {
-            case TOPIC -> new TopicExchange(exchangesEnum.getName());
-            case DIRECT -> new DirectExchange(exchangesEnum.getName());
-            default -> new FanoutExchange(exchangesEnum.getName());
-        };
-    }
-
-    @PostConstruct
-    public void registerBean() {
-        RabbitMqQueuesEnum[] queuesEnums = RabbitMqQueuesEnum.values();
-        // 注册交换机
-        Arrays.stream(RabbitMqExchangesEnum.values()).filter(Objects::nonNull).forEach(item -> SpringUtil.registerBean(item.getName(), exchangeDeclare(item)));
-        for (RabbitMqQueuesEnum queuesEnum : queuesEnums) {
-            Queue queue = queueDeclare(queuesEnum);
-            Exchange exchange = exchangeDeclare(queuesEnum.getExchanges());
-            if (queue == null || exchange == null) {
-                continue;
+        MqMsgLog msgLog = this.buildMsgLog(dto);
+        // 消息落库
+        if (msgLogService.save(msgLog)) {
+            try {
+                // 推送消息 ,消息推送至交换机,消息推送到队列
+                if (pushToExchangeFlag) {
+                    this.pushMsgToExchange(dto);
+                } else {
+                    this.pushMsgToQueue(dto);
+                }
+                log.info("消息投递成功");
+                // 消息数据更新
+                msgLog.setStatus(MsgLogStatusEnum.DELIVERY_SUCCESS.getStatus());
+                msgLogService.updateById(msgLog);
+            } catch (Exception e) {
+                log.error("消息投递失败,MsgDTO:{},error:{}", dto, e.getMessage());
+                // 消息数据更新
+                msgLog.setStatus(MsgLogStatusEnum.DELIVERY_FAILED.getStatus());
+                msgLog.setDeliveryFailedReason(e.getMessage());
+                msgLogService.updateById(msgLog);
             }
-            String queueName = queuesEnum.buildQueueName();
-            // 注册队列
-            SpringUtil.registerBean(queueName, queue);
-            // 队列绑定交换机
-            SpringUtil.registerBean(queueName + "_binding", BindingBuilder.bind(queue).to(exchange));
+        } else {
+            log.error("消息落库失败,入参MsgDTO:{},构建实例msgLog:{}", dto, msgLog);
         }
-
     }
+
+
+    // TODO: 2022/12/2 消息发布，有待考究
+
+    private void pushMsgToExchange(MsgDTO dto) {
+        if (dto == null || dto.getQueuesEnum() == null || dto.getQueuesEnum().getExchanges() == null) {
+            log.error("RabbitMqUtil.pushMsgToExchange.MqExchangesEnum is null");
+            throw new RuntimeException("RabbitMqUtil.pushMsgToExchange.MqExchangesEnum is null");
+        } else if (!RabbitMqExchangesTypeEnum.FANOUT.getType().equals(dto.getQueuesEnum().getExchanges().getRabbitMqExchangesTypeEnum().getType())) {
+            log.error("RabbitMqUtil.pushMsgToExchange.MqExchangesEnum.Type is not FANOUT");
+            throw new RuntimeException("RabbitMqUtil.pushMsgToExchange.MqExchangesEnum.Type is not FANOUT");
+        }
+        CorrelationData data = new CorrelationData();
+        data.setId(dto.getMessage().getMsgId());
+        rabbitTemplate.setExchange(dto.getQueuesEnum().getExchanges().getName());
+        rabbitTemplate.send("", new Message(dto.toString().getBytes()), data);
+    }
+
+
+    private void pushMsgToQueue(MsgDTO dto) {
+    }
+
+
+    private MqMsgLog buildMsgLog(MsgDTO dto) {
+        MqMsgLog msgLog = new MqMsgLog();
+        if (dto == null || dto.getQueuesEnum() == null || dto.getMessage() == null) {
+            log.error("RabbitMqUtil.pushMsg.MsgDTO is Null");
+            return msgLog;
+        }
+        msgLog.setMsgId(dto.getMessage().getMsgId());
+        msgLog.setBody(dto.getMessage().getMsg().toString());
+        msgLog.setPushType(dto.getQueuesEnum().getPushTypeEnum().getType());
+        msgLog.setExchange(dto.getQueuesEnum().getExchanges().buildExchangeName());
+        msgLog.setRoutingKey(dto.getQueuesEnum().getRoutingKey());
+        msgLog.setQueue(dto.getQueuesEnum().buildQueueName());
+        msgLog.setStatus(MsgLogStatusEnum.DELIVERY.getStatus());
+        msgLog.setTryCount(0);
+        return msgLog;
+    }
+
+
+    // TODO: 2022/12/1 监听消息并消费
+    //  统一的消费流程
+    //  但是 每个消费者的实现逻辑不一致
+    //  抽取流程，不同消费者不同实现
 
 }

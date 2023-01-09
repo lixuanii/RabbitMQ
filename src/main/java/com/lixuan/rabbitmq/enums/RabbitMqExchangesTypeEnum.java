@@ -9,7 +9,11 @@ package com.lixuan.rabbitmq.enums;
 public enum RabbitMqExchangesTypeEnum {
 
     /**
-     * 广播者，发布订阅 模式（交换机下所有消费者都能进行消费）
+     * 点对点模式 简单队列模式（默认交换机） 生产者发送消息给队列只有一个消费者能消费
+     */
+    DEFAULT("default"),
+    /**
+     * 广播者，发布订阅 模式（交换机下所有消费者都能进行消费） 消息发送至交换机
      */
     FANOUT("fanout"),
 
